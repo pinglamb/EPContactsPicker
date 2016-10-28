@@ -33,7 +33,7 @@ public enum SubtitleCellValue{
     case organization
 }
 
-open class EPContactsPicker: UITableViewController, UISearchResultsUpdating, UISearchBarDelegate {
+open class EPContactsPicker: UIViewController, UITableViewDataSource, UITableViewDelegate, UISearchResultsUpdating, UISearchBarDelegate {
     
     // MARK: - Properties
     
@@ -48,15 +48,22 @@ open class EPContactsPicker: UITableViewController, UISearchResultsUpdating, UIS
     
     var subtitleCellValue = SubtitleCellValue.phoneNumber
     var multiSelectEnabled: Bool = false //Default is single selection contact
+
+    var tableView: UITableView!
     
     // MARK: - Lifecycle Methods
     
     override open func viewDidLoad() {
         super.viewDidLoad()
-        self.title = EPGlobalConstants.Strings.contactsTitle
+
+        self.tableView = UITableView(frame: self.view.frame, style: .plain)
+        self.tableView.dataSource = self
+        self.tableView.delegate = self
+        self.tableView.sectionIndexBackgroundColor = .clear
+        self.view.addSubview(self.tableView)
 
         registerContactCell()
-        inititlizeBarButtons()
+        // inititlizeBarButtons()
         initializeSearchBar()
         reloadContacts()
     }
@@ -65,10 +72,13 @@ open class EPContactsPicker: UITableViewController, UISearchResultsUpdating, UIS
         self.resultSearchController = ( {
             let controller = UISearchController(searchResultsController: nil)
             controller.searchResultsUpdater = self
+            controller.hidesNavigationBarDuringPresentation = false
             controller.dimsBackgroundDuringPresentation = false
-            controller.searchBar.sizeToFit()
+            controller.searchBar.searchBarStyle = .minimal
+            controller.searchBar.backgroundColor = .white
             controller.searchBar.delegate = self
-            self.tableView.tableHeaderView = controller.searchBar
+            self.view.addSubview(controller.searchBar)
+            self.tableView.contentInset = UIEdgeInsetsMake(controller.searchBar.frame.size.height, 0, 0, 0)
             return controller
         })()
     }
@@ -117,13 +127,13 @@ open class EPContactsPicker: UITableViewController, UISearchResultsUpdating, UIS
     }
     
     convenience public init(delegate: EPPickerDelegate?, multiSelection : Bool) {
-        self.init(style: .plain)
+        self.init()
         self.multiSelectEnabled = multiSelection
         contactDelegate = delegate
     }
 
     convenience public init(delegate: EPPickerDelegate?, multiSelection : Bool, subtitleCellType: SubtitleCellValue) {
-        self.init(style: .plain)
+        self.init()
         self.multiSelectEnabled = multiSelection
         contactDelegate = delegate
         subtitleCellValue = subtitleCellType
@@ -234,12 +244,12 @@ open class EPContactsPicker: UITableViewController, UISearchResultsUpdating, UIS
     
     // MARK: - Table View DataSource
     
-    override open func numberOfSections(in tableView: UITableView) -> Int {
+    open func numberOfSections(in tableView: UITableView) -> Int {
         if resultSearchController.isActive { return 1 }
         return sortedContactKeys.count
     }
     
-    override open func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+    open func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         if resultSearchController.isActive { return filteredContacts.count }
         if let contactsForSection = orderedContacts[sortedContactKeys[section]] {
             return contactsForSection.count
@@ -249,7 +259,7 @@ open class EPContactsPicker: UITableViewController, UISearchResultsUpdating, UIS
 
     // MARK: - Table View Delegates
 
-    override open func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+    open func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "Cell", for: indexPath) as! EPContactCell
         cell.accessoryType = UITableViewCellAccessoryType.none
         //Convert CNContact to EPContact
@@ -274,7 +284,7 @@ open class EPContactsPicker: UITableViewController, UISearchResultsUpdating, UIS
         return cell
     }
     
-    override open func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+    open func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         
         let cell = tableView.cellForRow(at: indexPath) as! EPContactCell
         let selectedContact =  cell.contact!
@@ -302,22 +312,22 @@ open class EPContactsPicker: UITableViewController, UISearchResultsUpdating, UIS
         }
     }
     
-    override open func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
+    open func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         return 60.0
     }
     
-    override open func tableView(_ tableView: UITableView, sectionForSectionIndexTitle title: String, at index: Int) -> Int {
+    open func tableView(_ tableView: UITableView, sectionForSectionIndexTitle title: String, at index: Int) -> Int {
         if resultSearchController.isActive { return 0 }
         tableView.scrollToRow(at: IndexPath(row: 0, section: index), at: UITableViewScrollPosition.top , animated: false)        
         return sortedContactKeys.index(of: title)!
     }
     
-    override  open func sectionIndexTitles(for tableView: UITableView) -> [String]? {
+    open func sectionIndexTitles(for tableView: UITableView) -> [String]? {
         if resultSearchController.isActive { return nil }
         return sortedContactKeys
     }
 
-    override open func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+    open func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         if resultSearchController.isActive { return nil }
         return sortedContactKeys[section]
     }
