@@ -248,10 +248,11 @@ open class EPContactsPicker: UIViewController, UITableViewDataSource, UITableVie
 
                         if self.isRecent != nil {
                             var recentContacts = [CNContact]()
-                            contacts.forEach { contact in
-                                if self.isRecent!(contact) {
-                                    recentContacts.append(contact)
-                                }
+                            if let segregatedRecentContact = self.orderedRecentContacts[key] {
+                                recentContacts = segregatedRecentContact
+                            }
+                            if self.isRecent!(contact) {
+                                recentContacts.append(contact)
                             }
                             if recentContacts.count == 0 {
                                 self.orderedRecentContacts.removeValue(forKey: key)
