@@ -50,7 +50,28 @@ open class EPContactsPicker: UIViewController, UITableViewDataSource, UITableVie
     var multiSelectEnabled: Bool = false //Default is single selection contact
 
     var tableView: UITableView!
-    
+
+    open var isRecent: ((_ contact: CNContact) -> Bool)?
+    open var titleForRecent = "Recent"
+    var segmentControl: UISegmentedControl!
+    var orderedRecentContacts = [String: [CNContact]]()
+    var sortedRecentContactKeys = [String]()
+
+    var currentOrderedContacts: [String: [CNContact]] {
+        if isRecent != nil, segmentControl.selectedSegmentIndex == 0 {
+            return orderedRecentContacts
+        } else {
+            return orderedContacts
+        }
+    }
+    var currentSortedContactKeys: [String] {
+        if isRecent != nil, segmentControl.selectedSegmentIndex == 0 {
+            return sortedRecentContactKeys
+        } else {
+            return sortedContactKeys
+        }
+    }
+
     // MARK: - Lifecycle Methods
     
     override open func viewDidLoad() {
@@ -62,10 +83,24 @@ open class EPContactsPicker: UIViewController, UITableViewDataSource, UITableVie
         self.tableView.sectionIndexBackgroundColor = .clear
         self.view.addSubview(self.tableView)
 
+        if isRecent != nil {
+            segmentControl = UISegmentedControl(items: [titleForRecent, "All Contacts"])
+            segmentControl.selectedSegmentIndex = 0
+            segmentControl.addTarget(self, action: #selector(valueDidChange(_:)), for: .valueChanged)
+            self.navigationItem.titleView = segmentControl
+        }
+
         registerContactCell()
         // inititlizeBarButtons()
         initializeSearchBar()
         reloadContacts()
+    }
+
+    open override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if isRecent != nil {
+            segmentControl.removeTarget(self, action: nil, for: .allEvents)
+        }
     }
     
     func initializeSearchBar() {
@@ -211,12 +246,31 @@ open class EPContactsPicker: UIViewController, UITableViewDataSource, UITableVie
                         contacts.append(contact)
                         self.orderedContacts[key] = contacts
 
+                        if self.isRecent != nil {
+                            var recentContacts = [CNContact]()
+                            contacts.forEach { contact in
+                                if self.isRecent!(contact) {
+                                    recentContacts.append(contact)
+                                }
+                            }
+                            if recentContacts.count == 0 {
+                                self.orderedRecentContacts.removeValue(forKey: key)
+                            } else {
+                                self.orderedRecentContacts[key] = recentContacts
+                            }
+                        }
                     })
                     self.sortedContactKeys = Array(self.orderedContacts.keys).sorted(by: <)
                     if self.sortedContactKeys.first == "#" {
                         self.sortedContactKeys.removeFirst()
                         self.sortedContactKeys.append("#")
                     }
+                    self.sortedRecentContactKeys = Array(self.orderedRecentContacts.keys).sorted(by: <)
+                    if self.sortedRecentContactKeys.first == "#" {
+                        self.sortedRecentContactKeys.removeFirst()
+                        self.sortedRecentContactKeys.append("#")
+                    }
+
                     completion(contactsArray, nil)
                 }
                 //Catching exception as enumerateContactsWithFetchRequest can throw errors
@@ -241,17 +295,17 @@ open class EPContactsPicker: UIViewController, UITableViewDataSource, UITableVie
             CNContactEmailAddressesKey as CNKeyDescriptor,
         ]
     }
-    
+
     // MARK: - Table View DataSource
     
     open func numberOfSections(in tableView: UITableView) -> Int {
         if resultSearchController.isActive { return 1 }
-        return sortedContactKeys.count
+        return currentSortedContactKeys.count
     }
     
     open func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
         if resultSearchController.isActive { return filteredContacts.count }
-        if let contactsForSection = orderedContacts[sortedContactKeys[section]] {
+        if let contactsForSection = currentOrderedContacts[currentSortedContactKeys[section]] {
             return contactsForSection.count
         }
         return 0
@@ -268,7 +322,7 @@ open class EPContactsPicker: UIViewController, UITableViewDataSource, UITableVie
         if resultSearchController.isActive {
             contact = EPContact(contact: filteredContacts[(indexPath as NSIndexPath).row])
         } else {
-			guard let contactsForSection = orderedContacts[sortedContactKeys[(indexPath as NSIndexPath).section]] else {
+			guard let contactsForSection = currentOrderedContacts[currentSortedContactKeys[(indexPath as NSIndexPath).section]] else {
 				assertionFailure()
 				return UITableViewCell()
 			}
@@ -287,7 +341,7 @@ open class EPContactsPicker: UIViewController, UITableViewDataSource, UITableVie
     open func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         
         let cell = tableView.cellForRow(at: indexPath) as! EPContactCell
-        let selectedContact =  cell.contact!
+        let selectedContact = cell.contact!
         if multiSelectEnabled {
             //Keeps track of enable=ing and disabling contacts
             if cell.accessoryType == UITableViewCellAccessoryType.checkmark {
@@ -319,17 +373,17 @@ open class EPContactsPicker: UIViewController, UITableViewDataSource, UITableVie
     open func tableView(_ tableView: UITableView, sectionForSectionIndexTitle title: String, at index: Int) -> Int {
         if resultSearchController.isActive { return 0 }
         tableView.scrollToRow(at: IndexPath(row: 0, section: index), at: UITableViewScrollPosition.top , animated: false)        
-        return sortedContactKeys.index(of: title)!
+        return currentSortedContactKeys.index(of: title)!
     }
     
     open func sectionIndexTitles(for tableView: UITableView) -> [String]? {
         if resultSearchController.isActive { return nil }
-        return sortedContactKeys
+        return currentSortedContactKeys
     }
 
     open func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
         if resultSearchController.isActive { return nil }
-        return sortedContactKeys[section]
+        return currentSortedContactKeys[section]
     }
     
     // MARK: - Button Actions
@@ -362,6 +416,16 @@ open class EPContactsPicker: UIViewController, UITableViewDataSource, UITableVie
                 filteredContacts = try store.unifiedContacts(matching: predicate,
                     keysToFetch: allowedContactKeys())
                 //print("\(filteredContacts.count) count")
+
+                if isRecent != nil, segmentControl.selectedSegmentIndex == 0 {
+                    var filteredRecentContacts = [CNContact]()
+                    filteredContacts.forEach { contact in
+                        if isRecent!(contact) {
+                            filteredRecentContacts.append(contact)
+                        }
+                    }
+                    filteredContacts = filteredRecentContacts
+                }
                 
                 self.tableView.reloadData()
                 
@@ -378,5 +442,16 @@ open class EPContactsPicker: UIViewController, UITableViewDataSource, UITableVie
             self.tableView.reloadData()
         })
     }
-    
+
+    // MARK: - Segment Control Value Changed
+
+    func valueDidChange(_ segmentControl: UISegmentedControl) {
+        if resultSearchController.isActive {
+            updateSearchResults(for: resultSearchController)
+        } else {
+            DispatchQueue.main.async(execute: {
+                self.tableView.reloadData()
+            })
+        }
+    }
 }
